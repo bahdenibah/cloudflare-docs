@@ -6,9 +6,9 @@ sidebar:
 
 ---
 
-The Transactional Storage API allows you to access consistent key-value storage or (beta) SQL storage.
+The Transactional Storage API allows Durable Objects to access consistent key-value storage or (beta) [SQL storage](/durable-objects/api/transactional-storage-api/#sqlexec). A Durable Object's attached storage is private to its unique instance and cannot be accessed by other objects.
 
-Durable Objects gain access to a persistent Transactional Storage API via `ctx.storage`, the first parameter passed to the Durable Object constructor.
+Durable Objects gain access to a persistent Transactional Storage API via `ctx.storage`, on the `ctx` parameter passed to the Durable Object letructor.
 
 While access to a Durable Object instance is single-threaded, request executions can still interleave with each other when they wait on I/O, such as when waiting on the promises returned by persistent storage methods or `fetch()` requests.
 
@@ -36,6 +36,12 @@ export class Counter {
   }
 }
 ```
+
+:::note[SQLite in Durable Objects Beta]
+
+New beta version of Durable Objects is available where each Durable Object has a private, embedded SQLite database. SQL storage is [opt-in during beta](TODO link); otherwise, a Durable Object class has the standard, private key-value storage. Objects with SQL storage can use the [SQL API](/durable-objects/api/transactional-storage-api/#sqlexec). 
+
+:::
 
 ## Methods
 
@@ -236,9 +242,9 @@ A cursor (`SqlStorageCursor`) to iterate over query row results as objects with 
 * `columnNames()`: string[]
   * Returns an array of column name strings. Often used with `raw()` to find index of specific column(s).
 *  `rowsRead()`: number
-  * Returns number of rows read by the executed SQL `query`. Metric is the same one used for [SQL billing](TODO link).
+  * Returns number of rows read by the executed SQL `query` based on cursor consumption. Metric is the same one used for [SQL billing](TODO link).
 *  `rowsWritten()`: number
-  * Returns number of rows written by the executed SQL `query`. Metric is the same one used for [SQL billing](TODO link).
+  * Returns number of rows written by the executed SQL `query` based on curosr consumption. Metric is the same one used for [SQL billing](TODO link).
 
 #### Examples
 
@@ -264,7 +270,7 @@ export class MyDurableObject extends DurableObject{
 
 Iterate over query results as row objects:
 ```ts
-  const cursor = this.sql.exec("SELECT * FROM artist;");
+  let cursor = this.sql.exec("SELECT * FROM artist;");
 
   for (let row of cursor) {
     // Iterate over row object and do something
@@ -274,20 +280,20 @@ Iterate over query results as row objects:
 Convert query results to an array of row objects:
 ```ts
   // Return array of row objects: [{"artistid":123,"artistname":"Alice"},{"artistid":456,"artistname":"Bob"},{"artistid":789,"artistname":"Charlie"}]
-  const resultsArray = [...this.sql.exec("SELECT * FROM artist;")];
+  let resultsArray = [...this.sql.exec("SELECT * FROM artist;")];
   // OR
-  const resultsArray2 = Array.from(this.sql.exec("SELECT * FROM artist;"));
+  let resultsArray2 = Array.from(this.sql.exec("SELECT * FROM artist;"));
   // OR
-  const resultsArray3 = this.sql.exec("SELECT * FROM artist;").toArray();
+  let resultsArray3 = this.sql.exec("SELECT * FROM artist;").toArray();
 ```
 
 Convert query results to an array of row values arrays:
 ```ts
   // Returns [[123,"Alice"],[456,"Bob"],[789,"Charlie"]]
-  const resultsArray = [...this.sql.exec("SELECT * FROM artist;").raw()];	
+  let resultsArray = [...this.sql.exec("SELECT * FROM artist;").raw()];	
 
   // Returns ["artistid","artistname"]
-  const columnNameArray = Array.from(this.sql.exec("SELECT * FROM artist;").columnNames);
+  let columnNameArray = Array.from(this.sql.exec("SELECT * FROM artist;").columnNames);
 ```
 
 Get first row object of query results:
@@ -302,31 +308,57 @@ Check if query results has exactly one row:
   this.sql.exec("SELECT * FROM artist ORDER BY artistname ASC;").one();
 
   // returns { artistid: 123, artistname: 'Alice' }
-  const oneRow = this.sql.exec("SELECT * FROM artist WHERE artistname = ?;", "Alice").one()
+  let oneRow = this.sql.exec("SELECT * FROM artist WHERE artistname = ?;", "Alice").one()
 ```
 
 Cursor behavior:
 ```ts
-  const cursor = this.sql.exec("SELECT * FROM artist ORDER BY artistname ASC;");
+  let cursor = this.sql.exec("SELECT * FROM artist ORDER BY artistname ASC;");
   let { value: firstRow } = cursor[Symbol.iterator]().next()
   console.log(firstRow); // prints { artistid: 123, artistname: 'Alice' }
 
-  const remainingRows = Array.from(cursor); // TODO: will be cursor.toArray
+  let remainingRows = Array.from(cursor); // TODO: will be cursor.toArray
   console.log(remainingRows); // prints [{ artistid: 456, artistname: 'Bob' },{ artistid: 789, artistname: 'Charlie' }]
 ```
 
 ```ts
-  const cursor = this.sql.exec("SELECT * FROM artist;");
-  const { value: firstRow } = cursor[Symbol.iterator]().next()
+  let cursor = this.sql.exec("SELECT * FROM artist;");
+  let { value: firstRow } = cursor[Symbol.iterator]().next()
   console.log(cursor.rowsRead); // prints 1
 
-  const remainingRows = Array.from(cursor); // TODO: will be cursor.toArray
+  let remainingRows = Array.from(cursor); // TODO: will be cursor.toArray
   console.log(cursor.rowsRead); // prints 3
 ```
 
-### TODO sql.prepare
+### sql.prepare
 
-### TODO sql.databaseSize
+<code>ctx.storage.sql.prepare(query: string)</code> : SqlStorageStatement
+
+#### Parameters
+* `query`: string 
+  * The prepared SQL query string to be executed. `query` can contain `?` placeholders for parameter bindings.
+
+#### Returns 
+A cursor to iterate over query row results as objects with the [same supported methods as `sql.exec`](/durable-objects/api/transactional-storage-api/#returns)
+
+#### Examples
+
+```ts
+  let stmt = this.sql.prepare("SELECT * FROM artist WHERE artistid = ?;");
+  let result = stmt(123);
+  console.log([...result.raw()]); // prints [[123, 'Alice' ]]
+```
+
+### sql.databaseSize
+
+<code>ctx.storage.sql.databaseSize()</code> : number
+
+#### Returns
+The current SQLite database size in bytes.
+
+```ts
+  let size = ctx.storage.sql.databaseSize();
+```
 
 ### Related resources
 
